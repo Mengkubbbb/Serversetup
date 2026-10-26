@@ -1,0 +1,60 @@
+name: release
+
+# Creates the GitHub Release for v1.0.0 using the workflow's own GITHUB_TOKEN,
+# so releasing does not require any personal credentials.
+on:
+  push:
+    branches: [v1.0.0]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Package release bundle
+        run: |
+          STAGE=bundle
+          mkdir -p "$STAGE"
+          cp -r dist "$STAGE/dist"
+          cp package.json package-lock.json README.md .env.example "$STAGE/"
+          cp -r scripts "$STAGE/scripts"
+          (cd "$STAGE" && zip -qr ../MinecraftServerSetupMaker-v1.0.0.zip .)
+          unzip -l MinecraftServerSetupMaker-v1.0.0.zip
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v1.0.0 >/dev/null 2>&1; then
+            echo "Release already exists; updating assets."
+            gh release upload v1.0.0 MinecraftServerSetupMaker-v1.0.0.zip --clobber
+          else
+            gh release create v1.0.0 \
+              --target "$GITHUB_SHA" \
+              --title "Minecraft Server Setup Maker v1.0.0" \
+              --notes-file docs/RELEASE_NOTES-v1.0.0.md \
+              MinecraftServerSetupMaker-v1.0.0.zip
+          fi
+          gh release view v1.0.0 --json name,tagName,url,assets
